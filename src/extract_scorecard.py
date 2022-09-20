@@ -1,7 +1,7 @@
 import requests
-from bs4 import BeautifulSoup
-import pandas as pd
 import re
+import pandas as pd
+from bs4 import BeautifulSoup
 
 def extract_bowling_data(series_id: str, match_id:str) -> pd.DataFrame:
     """
@@ -72,3 +72,44 @@ def extract_batting_data(series_id: str, match_id: str) -> pd.DataFrame:
                                             "4s", "6s", "SR", "Team","Player_id"])
 
     return batsmen_df
+
+def extract_man_of_match(series_id:str, match_id:str) -> tuple:
+    """
+    Scrapes and returns the man of the match info if it exists
+    """
+    URL = f'https://www.espncricinfo.com/series/{series_id}/scorecard/{match_id}'
+    page = requests.get(URL)
+    bs = BeautifulSoup(page.content, 'lxml')
+    if not bs.find_all("div",{"class":"ci-match-player-award-carousel"}):
+        return (None, None)
+    else:
+        mom_data = bs.find_all("div",{"class":"ci-match-player-award-carousel"})[0].find('a')
+        man_of_match = mom_data.text.strip()
+        mom_id = mom_data["href"].split("-")[-1]
+        return (man_of_match, mom_id)
+
+def extract_winning_team(series_id:str, match_id:str) -> tuple:
+    """
+    Scrapes and returns the winning team info for a points based league like IPL
+    """
+    URL = f'https://www.espncricinfo.com/series/{series_id}/scorecard/{match_id}'
+    page = requests.get(URL)
+    bs = BeautifulSoup(page.content, 'lxml')
+    table_body=bs.find_all('tbody')
+
+    # If there's a Points row in the Match Details table
+    if table_body[4].find_all('tr')[-1].find_all("td")[0].text == 'Points':
+        match_points = table_body[4].find_all('tr')[-1].find_all("td")[1].text
+        teams = bs.find(True, {'class':'ds-grow'}).find_all(True, {'class':'ci-team-score'})
+        team_name_index = {teams[0].find('a', href=True).string : 1,
+                        teams[1].find('a', href=True).string : 2}
+        
+        # If 2 points have been awarded to a team
+        if "2" in match_points:
+            winner = match_points.split("2")[0].strip()
+            winner_index = team_name_index[winner]
+
+            return (winner, winner_index)
+    
+    else:
+        return (None, None)
